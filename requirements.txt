@@ -1,0 +1,10 @@
+# SEO-Pulse Dependencies
+# Python 3.9+
+
+# Core
+supabase>=2.0.0
+requests>=2.28.0
+python-dotenv>=1.0.0
+
+# Email (built-in, no external package needed)
+# smtplib - standard library
