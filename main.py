@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.header import Header
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -625,13 +626,21 @@ class ReportGenerator:
         Logger.progress("E-posta raporu gönderiliyor...")
         
         try:
+            # İçeriği UTF-8 güvenli hale getir - özel karakterleri temizle
+            # \xa0 (non-breaking space) gibi karakterleri normal boşlukla değiştir
+            safe_content = report_content.replace('\xa0', ' ')
+            
+            # Subject için UTF-8 kodlama (Türkçe karakter desteği)
+            subject = f"🚀 SEO-Pulse Performans Raporu - {datetime.now().strftime('%d/%m/%Y')}"
+            encoded_subject = Header(subject, 'utf-8').encode()
+            
             msg = MIMEMultipart()
             msg['From'] = Config.EMAIL_SENDER
             msg['To'] = Config.EMAIL_SENDER
-            msg['Subject'] = f"🚀 SEO-Pulse Performans Raporu - {datetime.now().strftime('%d/%m/%Y')}"
+            msg['Subject'] = encoded_subject
             
-            # Plain text olarak ekle
-            msg.attach(MIMEText(report_content, 'plain', 'utf-8'))
+            # Plain text olarak ekle - UTF-8 charset açıkça belirtilmiş
+            msg.attach(MIMEText(safe_content, 'plain', 'utf-8'))
             
             # Gmail SMTP ile gönder
             with smtplib.SMTP('smtp.gmail.com', 587) as server:
