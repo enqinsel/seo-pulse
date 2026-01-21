@@ -613,6 +613,42 @@ class ReportGenerator:
         return "\n".join(report)
     
     @staticmethod
+    def _sanitize_for_email(text: str) -> str:
+        """
+        E-posta için metni UTF-8 güvenli hale getirir.
+        Tüm özel ve gizli karakterleri temizler.
+        
+        Args:
+            text: Temizlenecek metin
+            
+        Returns:
+            UTF-8 uyumlu temiz metin
+        """
+        if not text:
+            return ""
+        
+        # Özel karakterleri değiştir
+        replacements = {
+            '\xa0': ' ',      # Non-breaking space
+            '\u200b': '',     # Zero-width space
+            '\u200c': '',     # Zero-width non-joiner
+            '\u200d': '',     # Zero-width joiner
+            '\ufeff': '',     # BOM
+            '\u00a0': ' ',    # Another non-breaking space representation
+        }
+        
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        
+        # UTF-8 encode/decode ile temizle
+        try:
+            text = text.encode('utf-8', errors='replace').decode('utf-8')
+        except Exception:
+            pass
+        
+        return text
+    
+    @staticmethod
     def send_email(report_content: str) -> bool:
         """
         Hazırlanan raporu e-posta olarak gönderir.
@@ -626,27 +662,33 @@ class ReportGenerator:
         Logger.progress("E-posta raporu gönderiliyor...")
         
         try:
-            # İçeriği UTF-8 güvenli hale getir - özel karakterleri temizle
-            # \xa0 (non-breaking space) gibi karakterleri normal boşlukla değiştir
-            safe_content = report_content.replace('\xa0', ' ')
+            # İçeriği UTF-8 güvenli hale getir
+            safe_content = ReportGenerator._sanitize_for_email(report_content)
             
-            # Subject için UTF-8 kodlama (Türkçe karakter desteği)
-            subject = f"🚀 SEO-Pulse Performans Raporu - {datetime.now().strftime('%d/%m/%Y')}"
-            encoded_subject = Header(subject, 'utf-8').encode()
+            # Subject - emoji olmadan, sadece ASCII + Türkçe karakterler
+            subject_text = f"SEO-Pulse Performans Raporu - {datetime.now().strftime('%d/%m/%Y')}"
+            subject_text = ReportGenerator._sanitize_for_email(subject_text)
             
-            msg = MIMEMultipart()
+            # MIME mesajı oluştur
+            msg = MIMEMultipart(_charset='utf-8')
             msg['From'] = Config.EMAIL_SENDER
             msg['To'] = Config.EMAIL_SENDER
-            msg['Subject'] = encoded_subject
+            msg['Subject'] = Header(subject_text, 'utf-8')
             
             # Plain text olarak ekle - UTF-8 charset açıkça belirtilmiş
-            msg.attach(MIMEText(safe_content, 'plain', 'utf-8'))
+            text_part = MIMEText(safe_content, 'plain', 'utf-8')
+            msg.attach(text_part)
             
             # Gmail SMTP ile gönder
             with smtplib.SMTP('smtp.gmail.com', 587) as server:
                 server.starttls()
                 server.login(Config.EMAIL_SENDER, Config.EMAIL_PASSWORD)
-                server.send_message(msg)
+                # send_message yerine sendmail kullan - daha güvenilir encoding
+                server.sendmail(
+                    Config.EMAIL_SENDER,
+                    Config.EMAIL_SENDER,
+                    msg.as_bytes()
+                )
             
             Logger.success("Rapor e-posta ile başarıyla gönderildi!")
             return True
