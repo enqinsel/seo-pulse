@@ -21,6 +21,7 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 if hasattr(sys.stdin, 'reconfigure'):
     sys.stdin.reconfigure(encoding='utf-8')
+import unicodedata
 import time
 import smtplib
 import requests
@@ -622,7 +623,7 @@ class ReportGenerator:
     def _sanitize_for_email(text: str) -> str:
         """
         E-posta için metni UTF-8 güvenli hale getirir.
-        Tüm özel ve gizli karakterleri temizler.
+        Unicode normalizasyonu ve özel karakter temizliği uygular.
         
         Args:
             text: Temizlenecek metin
@@ -633,6 +634,13 @@ class ReportGenerator:
         if not text:
             return ""
         
+        # Önce string olduğundan emin ol
+        if not isinstance(text, str):
+            text = str(text)
+        
+        # Unicode normalizasyonu - NFKD ile uyumluluk karakterlerine dönüştür
+        text = unicodedata.normalize('NFKD', text)
+        
         # Özel karakterleri değiştir
         replacements = {
             '\xa0': ' ',      # Non-breaking space
@@ -641,18 +649,18 @@ class ReportGenerator:
             '\u200d': '',     # Zero-width joiner
             '\ufeff': '',     # BOM
             '\u00a0': ' ',    # Another non-breaking space representation
+            '\r\n': '\n',     # Windows line endings
+            '\r': '\n',       # Old Mac line endings
         }
         
         for old, new in replacements.items():
             text = text.replace(old, new)
         
-        # UTF-8 encode/decode ile temizle
-        try:
-            text = text.encode('utf-8', errors='replace').decode('utf-8')
-        except Exception:
-            pass
+        # UTF-8 encode/decode ile temizle - sorunlu karakterleri yoksay
+        text = text.encode('utf-8', 'ignore').decode('utf-8')
         
-        return text
+        # Son olarak strip uygula
+        return text.strip()
     
     @staticmethod
     def send_email(report_content: str) -> bool:
@@ -675,9 +683,10 @@ class ReportGenerator:
             # Subject - saf ASCII, hiçbir özel karakter yok
             subject_text = "SEO Pulse Performance Report"
             
-            # E-posta adresleri - strip ile temizle, isim olmadan ham adres
-            sender_email = Config.EMAIL_SENDER.strip()
-            receiver_email = Config.EMAIL_SENDER.strip()
+            # E-posta adresleri - sanitize ve strip ile temizle
+            sender_email = Config.EMAIL_SENDER.replace('\xa0', ' ').strip()
+            receiver_email = Config.EMAIL_SENDER.replace('\xa0', ' ').strip()
+            email_password = Config.EMAIL_PASSWORD.replace('\xa0', ' ').strip()
             
             # Modern EmailMessage sınıfı kullan
             msg = EmailMessage()
@@ -685,13 +694,13 @@ class ReportGenerator:
             msg['To'] = receiver_email
             msg['Subject'] = subject_text
             
-            # İçeriği UTF-8 olarak ayarla
-            msg.set_content(safe_content, charset='utf-8')
+            # İçeriği UTF-8 olarak ayarla - subtype açıkça belirt
+            msg.set_content(safe_content, subtype='plain', charset='utf-8')
             
             # Gmail SMTP ile gönder
             with smtplib.SMTP('smtp.gmail.com', 587) as server:
                 server.starttls()
-                server.login(sender_email, Config.EMAIL_PASSWORD.strip())
+                server.login(sender_email, email_password)
                 # send_message EmailMessage ile en uyumlu yöntem
                 server.send_message(msg)
             
