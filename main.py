@@ -20,9 +20,9 @@ import smtplib
 import requests
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+from email.message import EmailMessage
 from email.header import Header
+from email.utils import formataddr
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -652,6 +652,7 @@ class ReportGenerator:
     def send_email(report_content: str) -> bool:
         """
         Hazırlanan raporu e-posta olarak gönderir.
+        Modern EmailMessage sınıfı ile UTF-8 tam uyum.
         
         Args:
             report_content: Gönderilecek rapor içeriği
@@ -662,33 +663,35 @@ class ReportGenerator:
         Logger.progress("E-posta raporu gönderiliyor...")
         
         try:
-            # İçeriği UTF-8 güvenli hale getir
+            # Agresif temizlik - tüm içeriğe uygula
             safe_content = ReportGenerator._sanitize_for_email(report_content)
             
-            # Subject - emoji olmadan, sadece ASCII + Türkçe karakterler
-            subject_text = f"SEO-Pulse Performans Raporu - {datetime.now().strftime('%d/%m/%Y')}"
+            # Subject - emoji ve özel karakter temizliği
+            subject_text = "SEO-Pulse Performans Raporu - {}".format(
+                datetime.now().strftime('%d/%m/%Y')
+            )
             subject_text = ReportGenerator._sanitize_for_email(subject_text)
+            # Ekstra güvenlik: tüm non-ASCII karakterleri kontrol et
+            subject_text = subject_text.encode('ascii', 'replace').decode('ascii')
             
-            # MIME mesajı oluştur
-            msg = MIMEMultipart(_charset='utf-8')
-            msg['From'] = Config.EMAIL_SENDER
-            msg['To'] = Config.EMAIL_SENDER
-            msg['Subject'] = Header(subject_text, 'utf-8')
+            # Gönderen bilgisi - sadece e-posta adresi (isim olmadan)
+            sender_email = Config.EMAIL_SENDER
             
-            # Plain text olarak ekle - UTF-8 charset açıkça belirtilmiş
-            text_part = MIMEText(safe_content, 'plain', 'utf-8')
-            msg.attach(text_part)
+            # Modern EmailMessage sınıfı kullan
+            msg = EmailMessage()
+            msg['From'] = sender_email
+            msg['To'] = sender_email
+            msg['Subject'] = subject_text
+            
+            # İçeriği UTF-8 olarak ayarla
+            msg.set_content(safe_content, charset='utf-8')
             
             # Gmail SMTP ile gönder
             with smtplib.SMTP('smtp.gmail.com', 587) as server:
                 server.starttls()
-                server.login(Config.EMAIL_SENDER, Config.EMAIL_PASSWORD)
-                # send_message yerine sendmail kullan - daha güvenilir encoding
-                server.sendmail(
-                    Config.EMAIL_SENDER,
-                    Config.EMAIL_SENDER,
-                    msg.as_bytes()
-                )
+                server.login(sender_email, Config.EMAIL_PASSWORD)
+                # send_message EmailMessage ile en uyumlu yöntem
+                server.send_message(msg)
             
             Logger.success("Rapor e-posta ile başarıyla gönderildi!")
             return True
