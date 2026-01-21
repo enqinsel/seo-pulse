@@ -15,6 +15,12 @@ Versiyon: 2.0.0
 
 import os
 import sys
+
+# Terminal/sistem düzeyinde UTF-8 zorlaması
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stdin, 'reconfigure'):
+    sys.stdin.reconfigure(encoding='utf-8')
 import time
 import smtplib
 import requests
@@ -666,21 +672,17 @@ class ReportGenerator:
             # Agresif temizlik - tüm içeriğe uygula
             safe_content = ReportGenerator._sanitize_for_email(report_content)
             
-            # Subject - emoji ve özel karakter temizliği
-            subject_text = "SEO-Pulse Performans Raporu - {}".format(
-                datetime.now().strftime('%d/%m/%Y')
-            )
-            subject_text = ReportGenerator._sanitize_for_email(subject_text)
-            # Ekstra güvenlik: tüm non-ASCII karakterleri kontrol et
-            subject_text = subject_text.encode('ascii', 'replace').decode('ascii')
+            # Subject - saf ASCII, hiçbir özel karakter yok
+            subject_text = "SEO Pulse Performance Report"
             
-            # Gönderen bilgisi - sadece e-posta adresi (isim olmadan)
-            sender_email = Config.EMAIL_SENDER
+            # E-posta adresleri - strip ile temizle, isim olmadan ham adres
+            sender_email = Config.EMAIL_SENDER.strip()
+            receiver_email = Config.EMAIL_SENDER.strip()
             
             # Modern EmailMessage sınıfı kullan
             msg = EmailMessage()
             msg['From'] = sender_email
-            msg['To'] = sender_email
+            msg['To'] = receiver_email
             msg['Subject'] = subject_text
             
             # İçeriği UTF-8 olarak ayarla
@@ -689,7 +691,7 @@ class ReportGenerator:
             # Gmail SMTP ile gönder
             with smtplib.SMTP('smtp.gmail.com', 587) as server:
                 server.starttls()
-                server.login(sender_email, Config.EMAIL_PASSWORD)
+                server.login(sender_email, Config.EMAIL_PASSWORD.strip())
                 # send_message EmailMessage ile en uyumlu yöntem
                 server.send_message(msg)
             
